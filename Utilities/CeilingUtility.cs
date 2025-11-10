@@ -1,4 +1,4 @@
-﻿using Autodesk.Revit.DB;
+using Autodesk.Revit.DB;
 using PaperLibrary.Core;
 using PaperLibrary.Extensions;
 using PaperLibrary.Utilities.RevitUtilities.Models;
@@ -62,7 +62,8 @@ namespace PaperLibrary.Utilities.RevitUtilities
                 // Number of grid lines to generate in each direction (both positive and negative sides).
                 int lineCount = 150;
                 List<Line> infiniteLines = [];
-                Console.WriteLine(ceilingData.BottomFaceStableReference);
+                Line lineA = null!, lineB = null!;
+
                 // ----- U direction (horizontal) — use stable reference indices {1, 5} -----
                 // We attempt to retrieve two references that define the grid spacing along U.
                 var refArrayU = GetGridReferences(ceilingData.BottomFaceStableReference, new[] { 1, 5 });
@@ -73,8 +74,15 @@ namespace PaperLibrary.Utilities.RevitUtilities
                     if (gridDataU != null)
                     {
                         // Generate long lines (to be clipped later by the solid) parallel to the U grid direction.
-                        infiniteLines.AddRange(GenerateLines(gridDataU, zLevel, lineLength, lineCount));
+                        List<Line> lines = GenerateLines(gridDataU, zLevel, lineLength, lineCount);
+                        if (!lines.Any()) return includeBoundary ? ceilingData.BottomBoundary : [];
+                        infiniteLines.AddRange(lines);
+                        lineA = lines.First();
                     }
+                }
+                else
+                {
+                    return includeBoundary ? ceilingData.BottomBoundary : [];
                 }
 
                 // ----- V direction (vertical) — use stable reference indices {2, 6} -----
@@ -84,12 +92,22 @@ namespace PaperLibrary.Utilities.RevitUtilities
                     GridData gridDataV = GetGridDataFromReferences(refArrayV);
                     if (gridDataV != null)
                     {
-                        infiniteLines.AddRange(GenerateLines(gridDataV, zLevel, lineLength, lineCount));
+                        List<Line> lines = GenerateLines(gridDataV, zLevel, lineLength, lineCount);
+                        if (!lines.Any()) return includeBoundary ? ceilingData.BottomBoundary : [];
+                        infiniteLines.AddRange(lines);
+                        lineB = lines.First();
                     }
                 }
+                else
+                {
+                    return includeBoundary ? ceilingData.BottomBoundary : [];
+                }
+
+                // Check if the ceiling there is no grid
+                if (lineA.Direction.IsParallelTo(lineB.Direction)) return includeBoundary ? ceilingData.BottomBoundary : [];
 
                 // If we could not infer any direction/spacing, return an empty list gracefully.
-                if (infiniteLines.Count == 0) return gridCurves;
+                if (!infiniteLines.Any()) return includeBoundary ? ceilingData.BottomBoundary : gridCurves;
 
                 // Extend each line by a large amount to guarantee intersections with the ceiling solid.
                 // (Extend_Paper is a custom extension; 5000 is a practical large length in Revit internal units.)
@@ -112,10 +130,7 @@ namespace PaperLibrary.Utilities.RevitUtilities
                 }
 
                 // Optionally include the bottom boundary of the ceiling.
-                if (includeBoundary)
-                {
-                    gridCurves.AddRange(ceilingData.BottomBoundary);
-                }
+                if (includeBoundary) gridCurves.AddRange(ceilingData.BottomBoundary);
 
                 return gridCurves;
             }
@@ -163,7 +178,7 @@ namespace PaperLibrary.Utilities.RevitUtilities
         /// The temporary dimension is cleaned up in the finally block to avoid polluting the model.
         /// </summary>
         private static GridData GetGridDataFromReferences(ReferenceArray refs)
-        {            
+        {
             Dimension dim = null!;
             try
             {
