@@ -5,7 +5,7 @@ using PaperLibrary.Commands;
 using PaperLibrary.Extensions;
 using PaperLibrary.Utilities;
 using PaperLibrary.Utilities.RevitUtilities;
-using PaperLibrary.WPF.Templates;
+using System.Collections.Generic;
 
 namespace PaperLibrary.Examples.CeilingGrid
 {
@@ -17,45 +17,26 @@ namespace PaperLibrary.Examples.CeilingGrid
         {
             var uiDoc = commandData.Application.ActiveUIDocument;
             var doc = uiDoc.Document;
-            AdvancedProgressBar advancedProgressBar = AdvancedProgressBar.GetInstance();
             try
             {
 
                 List<Element> eles = uiDoc.PickElements_Paper(e => e is Ceiling, PickElementsOptionFactory.CreateCurrentDocumentOption());
-                if (!eles.Any()) return Result.Failed;
-
-                advancedProgressBar.Show();             
-                advancedProgressBar.AddProcess("Get grids ceiling");
+                if (!eles.Any()) return Result.Failed;   
 
                 using (Transaction trans = new(doc, "Get grids ceiling"))
                 {
-                    trans.Start();
-                    ProgressUtility.ExecuteWithProgressBar(advancedProgressBar, eles, "Get grids ceiling", (ele) =>
+                    if (ele is Ceiling ceiling)
                     {
-                        try
+                        List<Curve> curves = CeilingUtility.GetCeilingGridLines(ceiling, true);
+                        foreach (var curve in curves)
                         {
-                            if (ele is Ceiling ceiling)
-                            {
-                                List<Curve> curves = CeilingUtility.GetCeilingGridLines(ceiling, true);
-                                foreach (var curve in curves)
-                                {
-                                    curve.Visualize_Paper(doc);
-                                }
-                            }
+                            curve.Visualize_Paper(doc);
                         }
-                        catch (Exception ex)
-                        {
-                            FileUtility.LogProgress($"Num: {ele.Id} - Error: {ex.Message}");
-                        }
-                    });
-
-                    trans.Commit();
-                }
-                if (!advancedProgressBar!.AnyLog()) advancedProgressBar.Close();
+                    }
+                }   
             }
             catch (Autodesk.Revit.Exceptions.OperationCanceledException)
-            {
-                advancedProgressBar?.Dispose();
+            {     
                 return Result.Cancelled;
             }
             catch (Exception ex)
